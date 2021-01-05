@@ -1,0 +1,95 @@
+---
+title: "Human Activity Recognition"
+author: "Lucas Berardo"
+date: "January 2020"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+This project consist in an evaluation for the Weight Lifting Exercises dataset. This dataset includes data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants that were asked to perform barbell lifts correctly and incorrectly in 5 different ways. My goal is to investigate "how well" the activity was performed by the wearer and then use my model to predict 20 different test cases. 
+
+More information is available from the website here: http://groupware.les.inf.puc-rio.br/har 
+
+
+```{r, echo = FALSE, eval = TRUE, message=FALSE}
+library(caret)
+
+library(tidyverse)
+testing = data.table::fread(file = "pml-testing.csv")
+training = data.table::fread(file = "pml-training.csv")
+```
+### Cleaning the dataset
+
+The first thing I noticed when I browsed the dataset is that there are a lot of missing values in several predictors. This happens on both the training set and the testing set. In order to illustrate my point I ask R to show the percentage of NA by variable.
+
+```{r, echo = FALSE, eval = TRUE}
+colMeans(is.na(training))
+```
+I decided to get rid of the predictors that are not complete. Although an alternative solution would be data imputation, in the present project I the former is the best idea.
+
+```{r, echo = FALSE, eval = TRUE}
+columnas_a_borrar <- which(colMeans(is.na(training))>0)
+training[,columnas_a_borrar] <- NULL
+columnas_a_borrar <- which(colMeans(is.na(testing))>0)
+testing[,columnas_a_borrar] <- NULL
+```
+
+I also consider that the predicting power of predictors based on identity and timing features is very low so I remove them. The removed variables are:
+
+```{r, echo = FALSE, eval = TRUE}
+names(training)[1:7]
+training <- training[, -c(1:7)]
+testing <- testing[, -c(1:7)]
+```
+
+### Prediction
+
+As I had learnt in the course, I split the training set after cleaning it into a training dataset and a validation dataset. This is important because it allows me to compute out-of-sample errors during model building evaluation. __As making a good Fernet__, a 70/30 partition is used. 
+
+```{r, echo = FALSE, eval = TRUE}
+set.seed(33833)
+inTrain <- createDataPartition(training$classe, p=0.7, list = F)
+training_data <- training[inTrain,]
+validation_data <- training[-inTrain,]
+```
+
+
+#### Random forests
+Firstly I fit a Random Forest model. Note that I use k-fold cross-validation (k=5) for assessing how the results of the analysis will generalize to an independent dataset.
+
+```{r, echo = FALSE, eval = TRUE}
+control <- trainControl(method = "cv", number = 5)
+model_fit_rf <- train(classe ~ ., data = training_data, method = "rf", trControl = control, na.action=na.omit)
+model_fit_rf$results
+```
+
+Now I can apply the prediction to the validation dataset. After that, I show its evaluation using the confusion matrix.
+
+```{r, echo = FALSE, eval = TRUE}
+prediction_rf <- predict(model_fit_rf, validation_data)
+confusion_rf <- confusionMatrix(as.factor(validation_data$classe), prediction_rf)
+confusion_rf$table
+confusion_rf$overall[1]
+```
+#### Classification trees
+In second place, I will fit a Classification tree. Again, I decide to use a 5-fold cross validation:
+
+```{r, echo = FALSE, eval = TRUE}
+model_fit_rpart <- train(classe ~ ., data = training_data, method = "rpart", trControl = control)
+model_fit_rpart$results
+```
+Now I can apply the prediction to the validation dataset. After that, I show its evaluation using the confusion matrix.
+
+```{r, echo = FALSE, eval = TRUE}
+prediction_rpart <- predict(model_fit_rpart, validation_data)
+confusion_rpart <- confusionMatrix(as.factor(validation_data$classe), prediction_rpart)
+confusion_rpart$table
+confusion_rpart$overall[1]
+```
+
+### Testing set
+As I have showed, the Random forests method applied to the provided dataset returns far better prediction results than the classification tree method. With this in mind, I report the resulting prediction model based on the Random forests algorithm applied to the testing dataset:
+```{r, echo = FALSE, eval = TRUE}
+predict(model_fit_rf, testing)
+```
